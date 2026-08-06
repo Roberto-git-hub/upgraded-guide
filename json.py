@@ -2,13 +2,6 @@ import streamlit as st
 import pandas as pd
 import json
 import urllib.request
-import urllib.parse
-
-# Roteamento simples: se a URL tiver ?view=raw, exibe apenas o JSON na tela
-query_params = st.query_params
-if "json_raw" in st.session_state and query_params.get("view") == "raw":
-    st.text(st.session_state["json_raw"])
-    st.stop()
 
 def load_and_clean_data(uploaded_file):
     if uploaded_file.name.endswith('.csv'):
@@ -164,14 +157,17 @@ def process_data(df):
     return final_json_data
 
 def generate_web_link(json_content):
-    """Envia o JSON para o dpaste.org e retorna uma URL pública de leitura"""
+    """Envia o JSON para o JSONBlob e retorna uma URL pública de leitura"""
     try:
-        data = urllib.parse.urlencode({'content': json_content, 'format': 'url', 'expiry': '10'}).encode('utf-8')
-        req = urllib.request.Request('https://dpaste.org/api/', data=data)
+        req = urllib.request.Request(
+            'https://jsonblob.com/api/jsonBlob',
+            data=json_content.encode('utf-8'),
+            headers={'Content-Type': 'application/json', 'Accept': 'application/json'}
+        )
         with urllib.request.urlopen(req) as response:
-            paste_url = response.read().decode('utf-8').strip()
-            return f"{paste_url}/raw"
-    except Exception:
+            # O link gerado volta no cabeçalho 'Location' da resposta
+            return response.headers.get('Location')
+    except Exception as e:
         return None
 
 # Interface Web Streamlit
@@ -192,11 +188,12 @@ if uploaded_file is not None:
         if st.button("Gerar JSON"):
             json_objects = process_data(df)
             json_string = json.dumps(json_objects, indent=2)
-            st.session_state["json_raw"] = json_string
 
             st.subheader("Resultado Final (JSON):")
-            # O bloco abaixo possui o botão de copiar nativo do Streamlit no canto superior direito
             st.code(json_string, language='json')
+            
+            # Dica visual para a equipe de que podem usar o botão nativo do Streamlit
+            st.info("💡 **Dica:** Você pode copiar o código inteiro clicando no ícone de cópia no canto superior direito do bloco preto acima.")
 
             col1, col2 = st.columns(2)
 
