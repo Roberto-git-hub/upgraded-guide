@@ -158,26 +158,26 @@ def process_data(df):
 # Interface Web Streamlit
 st.set_page_config(page_title="Gerador JSON - Adobe Campaign", layout="centered")
 
-st.title("⚙️ Conversor de Segmentos para JSON")
-st.write("Faça o upload do seu arquivo Excel (.xlsx) ou CSV para gerar a estrutura JSON de segmentos.")
+st.title("⚙️ Segment-to-JSON Converter")
+st.write("Upload your Excel (.xlsx) or CSV file to generate the JSON structure for segments.")
 
-uploaded_file = st.file_uploader("Escolha o arquivo de origem", type=["xlsx", "csv"])
+uploaded_file = st.file_uploader("Select the source file", type=["xlsx", "csv"])
 
 if uploaded_file is not None:
     try:
         df = load_and_clean_data(uploaded_file)
 
-        st.success("Arquivo carregado e cabeçalho identificado com sucesso!")
+        st.success("File uploaded and header successfully identified!")
         st.dataframe(df.head())
 
         if st.button("Gerar JSON"):
             json_objects = process_data(df)
             json_string = json.dumps(json_objects, indent=2)
 
-            st.subheader("Resultado Final (JSON):")
+            st.subheader("Final Result (JSON):")
             
             # Caixa de destaque orientando a equipe sobre como copiar com um clique!
-            st.warning("💡 **COMO COPIAR:** Passe o mouse no **canto superior direito** do bloco escuro abaixo. Vai aparecer um ícone de prancheta (📋). Clique nele uma única vez para copiar todo o código sem precisar rolar a tela!")
+            st.warning("💡 **HOW TO COPY:** Hover your mouse over the **top-right corner** of the dark block below. A clipboard icon (📋) will appear. Click it once to copy the entire code without needing to scroll!")
 
             # O st.code possui o botão de cópia nativo e já renderiza bonito
             st.code(json_string, language='json')
