@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import json
-import urllib.request
 
 def load_and_clean_data(uploaded_file):
     if uploaded_file.name.endswith('.csv'):
@@ -156,20 +155,6 @@ def process_data(df):
 
     return final_json_data
 
-def generate_web_link(json_content):
-    """Envia o JSON para o JSONBlob e retorna uma URL pública de leitura"""
-    try:
-        req = urllib.request.Request(
-            'https://jsonblob.com/api/jsonBlob',
-            data=json_content.encode('utf-8'),
-            headers={'Content-Type': 'application/json', 'Accept': 'application/json'}
-        )
-        with urllib.request.urlopen(req) as response:
-            # O link gerado volta no cabeçalho 'Location' da resposta
-            return response.headers.get('Location')
-    except Exception as e:
-        return None
-
 # Interface Web Streamlit
 st.set_page_config(page_title="Gerador JSON - Adobe Campaign", layout="centered")
 
@@ -190,29 +175,20 @@ if uploaded_file is not None:
             json_string = json.dumps(json_objects, indent=2)
 
             st.subheader("Resultado Final (JSON):")
+            
+            # Caixa de destaque orientando a equipe sobre como copiar com um clique!
+            st.warning("💡 **COMO COPIAR:** Passe o mouse no **canto superior direito** do bloco escuro abaixo. Vai aparecer um ícone de prancheta (📋). Clique nele uma única vez para copiar todo o código sem precisar rolar a tela!")
+
+            # O st.code possui o botão de cópia nativo e já renderiza bonito
             st.code(json_string, language='json')
             
-            # Dica visual para a equipe de que podem usar o botão nativo do Streamlit
-            st.info("💡 **Dica:** Você pode copiar o código inteiro clicando no ícone de cópia no canto superior direito do bloco preto acima.")
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                st.download_button(
-                    label="📥 Baixar Ficheiro .json",
-                    data=json_string,
-                    file_name="dataSegments_output.json",
-                    mime="application/json",
-                    use_container_width=True
-                )
-
-            with col2:
-                # Gera link público para visualização no navegador
-                link_web = generate_web_link(json_string)
-                if link_web:
-                    st.link_button("🌐 Abrir JSON na Web (Link)", link_web, use_container_width=True)
-                else:
-                    st.warning("Não foi possível gerar a URL temporária no momento.")
+            st.download_button(
+                label="📥 Baixar Ficheiro .json",
+                data=json_string,
+                file_name="dataSegments_output.json",
+                mime="application/json",
+                use_container_width=True
+            )
 
     except Exception as e:
         st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
