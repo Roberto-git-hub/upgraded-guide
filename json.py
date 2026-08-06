@@ -170,7 +170,7 @@ if uploaded_file is not None:
         st.success("File uploaded and header successfully identified!")
         st.dataframe(df.head())
 
-        if st.button("Gerar JSON"):
+        if st.button("To generate JSON"):
             json_objects = process_data(df)
             json_string = json.dumps(json_objects, indent=2)
 
