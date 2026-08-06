@@ -183,7 +183,7 @@ if uploaded_file is not None:
             st.code(json_string, language='json')
             
             st.download_button(
-                label="📥 Baixar Ficheiro .json",
+                label="📥 Download File .json",
                 data=json_string,
                 file_name="dataSegments_output.json",
                 mime="application/json",
