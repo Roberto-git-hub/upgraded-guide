@@ -38,16 +38,16 @@ def process_data(df):
         return ''
 
     for _, row in df.iterrows():
-        segment_code = get_val(row, ['Segment Code', 'SegmentCode'])
+        segment_code = get_val(row, ['Segment Code', 'SegmentCode', 'Additional SegmentCode'])
         
-        # REGRA PRINCIPAL: Se não houver Segment Code, a linha é ignorada (linha cortada/tachada)
+        # REGRA PRINCIPAL: Se não houver Segment Code, a linha é ignorada
         if not segment_code:
             continue
 
         dag_segment_name = get_val(row, ['DAG Segment Name', 'Segment Name', 'DAGSegmentName'])
         cell_name = get_val(row, ['CellName', 'Cell Name'])
         source = get_val(row, ['Source'])
-        requested_volume = get_val(row, ['Requested Volume', 'Testing split', 'Split'])
+        requested_volume = get_val(row, ['Requested Volume', 'Requested', 'Testing split', 'Split'])
         sline_code = get_val(row, ['SlineCode', 'Sline Code', 'SL Code'])
 
         if not dag_segment_name and not cell_name:
@@ -80,9 +80,19 @@ def process_data(df):
         except:
             dag_count = 0.0
 
-        # Identificação de Split flexível
+        # Identificação de Split inteligente:
+        # 1. Checa se o próprio Segment Code possui indicação de split
+        seg_code_lower = segment_code.lower()
+        has_split_in_code = (
+            "50%:" in seg_code_lower or 
+            "50%" in seg_code_lower or 
+            "/" in segment_code or 
+            "\n" in segment_code
+        )
+
+        # 2. Checa o campo Requested Volume / Testing Split
         req_vol_str = str(requested_volume).lower().replace(',', '.')
-        is_split = (
+        has_split_in_volume = (
             "50%" in req_vol_str or 
             "50/50" in req_vol_str or 
             req_vol_str == "0.5" or 
@@ -90,17 +100,22 @@ def process_data(df):
             req_vol_str == "50"
         )
 
+        # O split será ativado se detectado no código OU no volume solicitado
+        is_split = has_split_in_code or has_split_in_volume
+
         if is_split:
-            if "/" in segment_code:
+            # Separa os dois códigos de segmento
+            if "\n" in segment_code:
+                parts = [x.strip() for x in segment_code.split("\n") if x.strip()]
+            elif "/" in segment_code:
                 parts = [x.strip() for x in segment_code.split("/", 1)]
-            elif "\n" in segment_code:
-                parts = [x.strip() for x in segment_code.split("\n", 1)]
             else:
                 parts = [segment_code, segment_code]
 
-            code1 = parts[0].replace("50%:", "").strip()
+            # Limpa o prefixo "50%:" se presente
+            code1 = parts[0].replace("50%:", "").replace("50%", "").strip()
             code2 = parts[1] if len(parts) > 1 else code1
-            code2 = code2.replace("50%:", "").strip()
+            code2 = code2.replace("50%:", "").replace("50%", "").strip()
 
             records = [
                 {
