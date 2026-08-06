@@ -1,6 +1,14 @@
 import streamlit as st
 import pandas as pd
 import json
+import urllib.request
+import urllib.parse
+
+# Roteamento simples: se a URL tiver ?view=raw, exibe apenas o JSON na tela
+query_params = st.query_params
+if "json_raw" in st.session_state and query_params.get("view") == "raw":
+    st.text(st.session_state["json_raw"])
+    st.stop()
 
 def load_and_clean_data(uploaded_file):
     if uploaded_file.name.endswith('.csv'):
@@ -40,7 +48,6 @@ def process_data(df):
     for _, row in df.iterrows():
         segment_code = get_val(row, ['Segment Code', 'SegmentCode', 'Additional SegmentCode'])
         
-        # REGRA PRINCIPAL: Se não houver Segment Code, a linha é ignorada
         if not segment_code:
             continue
 
@@ -53,7 +60,6 @@ def process_data(df):
         if not dag_segment_name and not cell_name:
             continue
 
-        # Evita considerar fragmentos de texto de queries como nome de segmento
         check_str = (dag_segment_name or cell_name).lower()
         if check_str.startswith('where ') or check_str.startswith('pick from') or check_str.startswith('and '):
             continue
@@ -61,7 +67,6 @@ def process_data(df):
         if not dag_segment_name: dag_segment_name = cell_name
         if not cell_name: cell_name = dag_segment_name
 
-        # Tratamento do DAG Count
         dag_count_col = None
         for name in ['dag count', 'count']:
             if name in cols:
@@ -80,7 +85,6 @@ def process_data(df):
         except:
             dag_count = 0.0
 
-        # Identificação de Split inteligente
         seg_code_lower = segment_code.lower()
         has_split_in_code = (
             "50%:" in seg_code_lower or 
@@ -159,6 +163,17 @@ def process_data(df):
 
     return final_json_data
 
+def generate_web_link(json_content):
+    """Envia o JSON para o dpaste.org e retorna uma URL pública de leitura"""
+    try:
+        data = urllib.parse.urlencode({'content': json_content, 'format': 'url', 'expiry': '10'}).encode('utf-8')
+        req = urllib.request.Request('https://dpaste.org/api/', data=data)
+        with urllib.request.urlopen(req) as response:
+            paste_url = response.read().decode('utf-8').strip()
+            return f"{paste_url}/raw"
+    except Exception:
+        return None
+
 # Interface Web Streamlit
 st.set_page_config(page_title="Gerador JSON - Adobe Campaign", layout="centered")
 
@@ -177,16 +192,30 @@ if uploaded_file is not None:
         if st.button("Gerar JSON"):
             json_objects = process_data(df)
             json_string = json.dumps(json_objects, indent=2)
+            st.session_state["json_raw"] = json_string
 
             st.subheader("Resultado Final (JSON):")
+            # O bloco abaixo possui o botão de copiar nativo do Streamlit no canto superior direito
             st.code(json_string, language='json')
 
-            st.download_button(
-                label="📥 Baixar Ficheiro .json",
-                data=json_string,
-                file_name="dataSegments_output.json",
-                mime="application/json"
-            )
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.download_button(
+                    label="📥 Baixar Ficheiro .json",
+                    data=json_string,
+                    file_name="dataSegments_output.json",
+                    mime="application/json",
+                    use_container_width=True
+                )
+
+            with col2:
+                # Gera link público para visualização no navegador
+                link_web = generate_web_link(json_string)
+                if link_web:
+                    st.link_button("🌐 Abrir JSON na Web (Link)", link_web, use_container_width=True)
+                else:
+                    st.warning("Não foi possível gerar a URL temporária no momento.")
 
     except Exception as e:
         st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
