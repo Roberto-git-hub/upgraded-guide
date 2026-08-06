@@ -38,19 +38,28 @@ def process_data(df):
         return ''
 
     for _, row in df.iterrows():
-        dag_segment_name = get_val(row, ['DAG Segment Name', 'Segment Name', 'DAGSegmentName'])
-        cell_name = get_val(row, ['CellName', 'Cell Name', 'Segment Name'])
+        segment_code = get_val(row, ['Segment Code', 'SegmentCode'])
         
-        if not dag_segment_name and not cell_name:
+        # REGRA PRINCIPAL: Se não houver Segment Code, a linha é ignorada (linha cortada/tachada)
+        if not segment_code:
             continue
-            
-        if not dag_segment_name: dag_segment_name = cell_name
-        if not cell_name: cell_name = dag_segment_name
 
+        dag_segment_name = get_val(row, ['DAG Segment Name', 'Segment Name', 'DAGSegmentName'])
+        cell_name = get_val(row, ['CellName', 'Cell Name'])
         source = get_val(row, ['Source'])
         requested_volume = get_val(row, ['Requested Volume', 'Testing split', 'Split'])
-        segment_code = get_val(row, ['Segment Code', 'SegmentCode'])
-        sline_code = get_val(row, ['SlineCode', 'Sline Code'])
+        sline_code = get_val(row, ['SlineCode', 'Sline Code', 'SL Code'])
+
+        if not dag_segment_name and not cell_name:
+            continue
+
+        # Evita considerar fragmentos de texto de queries como nome de segmento
+        check_str = (dag_segment_name or cell_name).lower()
+        if check_str.startswith('where ') or check_str.startswith('pick from') or check_str.startswith('and '):
+            continue
+
+        if not dag_segment_name: dag_segment_name = cell_name
+        if not cell_name: cell_name = dag_segment_name
 
         # Tratamento do DAG Count
         dag_count_col = None
