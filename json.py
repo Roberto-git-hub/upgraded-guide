@@ -80,8 +80,7 @@ def process_data(df):
         except:
             dag_count = 0.0
 
-        # Identificação de Split inteligente:
-        # 1. Checa se o próprio Segment Code possui indicação de split
+        # Identificação de Split inteligente
         seg_code_lower = segment_code.lower()
         has_split_in_code = (
             "50%:" in seg_code_lower or 
@@ -90,7 +89,6 @@ def process_data(df):
             "\n" in segment_code
         )
 
-        # 2. Checa o campo Requested Volume / Testing Split
         req_vol_str = str(requested_volume).lower().replace(',', '.')
         has_split_in_volume = (
             "50%" in req_vol_str or 
@@ -100,11 +98,9 @@ def process_data(df):
             req_vol_str == "50"
         )
 
-        # O split será ativado se detectado no código OU no volume solicitado
         is_split = has_split_in_code or has_split_in_volume
 
         if is_split:
-            # Separa os dois códigos de segmento
             if "\n" in segment_code:
                 parts = [x.strip() for x in segment_code.split("\n") if x.strip()]
             elif "/" in segment_code:
@@ -112,7 +108,6 @@ def process_data(df):
             else:
                 parts = [segment_code, segment_code]
 
-            # Limpa o prefixo "50%:" se presente
             code1 = parts[0].replace("50%:", "").replace("50%", "").strip()
             code2 = parts[1] if len(parts) > 1 else code1
             code2 = code2.replace("50%:", "").replace("50%", "").strip()
@@ -167,8 +162,8 @@ def process_data(df):
 # Interface Web Streamlit
 st.set_page_config(page_title="Gerador JSON - Adobe Campaign", layout="centered")
 
-st.title("⚙️ Conversor de Segmentos para Adobe Campaign")
-st.write("Faça o upload do seu arquivo Excel (.xlsx) ou CSV para gerar o script JavaScript/JSON.")
+st.title("⚙️ Conversor de Segmentos para JSON")
+st.write("Faça o upload do seu arquivo Excel (.xlsx) ou CSV para gerar a estrutura JSON de segmentos.")
 
 uploaded_file = st.file_uploader("Escolha o arquivo de origem", type=["xlsx", "csv"])
 
@@ -179,34 +174,18 @@ if uploaded_file is not None:
         st.success("Arquivo carregado e cabeçalho identificado com sucesso!")
         st.dataframe(df.head())
 
-        if st.button("Gerar Script JS/JSON"):
+        if st.button("Gerar JSON"):
             json_objects = process_data(df)
             json_string = json.dumps(json_objects, indent=2)
 
-            js_output = f"""//Data provided on the LP File
-dataSegments =  
-{json_string}
-;
-
-instance.vars.snapshotRunId = getGuid();
-grossCount_setCampaignInfo();
-
-
-vars.startingAudienceCount = 0;
-vars.countAfterPromotableStatusCheck = 0;
-vars.countAfterDeduplication = 0;
-vars.countAfterSuppressions = 0;
-vars.finalTargetingCount = 0;
-vars.dataSegments = JSON.stringify(dataSegments);"""
-
-            st.subheader("Resultado Final:")
-            st.code(js_output, language='javascript')
+            st.subheader("Resultado Final (JSON):")
+            st.code(json_string, language='json')
 
             st.download_button(
-                label="📥 Baixar Ficheiro .js",
-                data=js_output,
-                file_name="dataSegments_output.js",
-                mime="text/javascript"
+                label="📥 Baixar Ficheiro .json",
+                data=json_string,
+                file_name="dataSegments_output.json",
+                mime="application/json"
             )
 
     except Exception as e:
