@@ -1,3 +1,27 @@
+import streamlit as st
+import pandas as pd
+import json
+
+def load_and_clean_data(uploaded_file):
+    if uploaded_file.name.endswith('.csv'):
+        try:
+            df = pd.read_csv(uploaded_file, sep=None, engine='python')
+        except:
+            df = pd.read_csv(uploaded_file, sep=';')
+    else:
+        df = pd.read_excel(uploaded_file)
+
+    first_col = str(df.columns[0]).lower()
+    if 'unnamed' in first_col or 'deployment' in first_col:
+        for idx, row in df.iterrows():
+            row_values = [str(val).lower().strip() for val in row.values]
+            if any(k in row_values for k in ['dag segment name', 'segment name', 'cellname', 'waterfall order']):
+                df.columns = df.iloc[idx]
+                df = df.iloc[idx + 1:].reset_index(drop=True)
+                break
+
+    return df
+
 def process_data(df):
     final_json_data = []
     waterfall_id = 1
@@ -144,3 +168,43 @@ def process_data(df):
             final_json_data.append(record)
 
     return final_json_data
+
+# =====================================================================
+# INTERFACE WEB STREAMLIT
+# =====================================================================
+st.set_page_config(page_title="Gerador JSON - Adobe Campaign", layout="centered")
+
+st.title("⚙️ Segment-to-JSON Converter")
+st.write("Upload your Excel (.xlsx) or CSV file to generate the JSON structure for segments.")
+
+uploaded_file = st.file_uploader("Select the source file", type=["xlsx", "csv"])
+
+if uploaded_file is not None:
+    try:
+        df = load_and_clean_data(uploaded_file)
+
+        st.success("File uploaded and header successfully identified!")
+        st.dataframe(df.head())
+
+        if st.button("To generate JSON"):
+            json_objects = process_data(df)
+            json_string = json.dumps(json_objects, indent=2)
+
+            st.subheader("Final Result (JSON):")
+            
+            # Caixa de destaque orientando a equipe sobre como copiar com um clique!
+            st.warning("💡 **HOW TO COPY:** Hover your mouse over the **top-right corner** of the dark block below. A clipboard icon (📋) will appear. Click it once to copy the entire code without needing to scroll!")
+
+            # O st.code possui o botão de cópia nativo e já renderiza bonito
+            st.code(json_string, language='json')
+            
+            st.download_button(
+                label="📥 Download File .json",
+                data=json_string,
+                file_name="dataSegments_output.json",
+                mime="application/json",
+                use_container_width=True
+            )
+
+    except Exception as e:
+        st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
