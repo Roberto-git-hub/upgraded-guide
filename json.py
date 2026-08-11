@@ -16,21 +16,18 @@ if 'data' in st.query_params:
         compressed_data = base64.urlsafe_b64decode(st.query_params['data'])
         json_string = zlib.decompress(compressed_data).decode('utf-8')
         
-        st.title("📄 Visualizador de JSON (Workflow)")
-        st.success("JSON carregado com sucesso via link!")
-        st.warning("💡 **COMO COPIAR:** Passe o mouse no canto superior direito do bloco preto abaixo e clique no ícone de prancheta (📋) para copiar tudo.")
+        st.title("📄 JSON Viewer (Workflow)")
+        st.success("JSON successfully loaded via link!")
+        st.warning("💡 **HOW TO COPY:** Hover your mouse over the top-right corner of the black block below and click the clipboard icon (📋) to copy everything.")
         
         # Mostra apenas o código e interrompe o resto do app
         st.code(json_string, language='json')
         st.stop() 
     except Exception as e:
-        st.error("⚠️ O link parece estar quebrado ou corrompido. Peça para gerar novamente.")
+        st.error("⚠️ The link appears to be broken or corrupted. Please ask for it to be generated again.")
         st.stop()
 
 
-# =====================================================================
-# FUNÇÕES DE PROCESSAMENTO (Coordenadora)
-# =====================================================================
 def load_and_clean_data(uploaded_file):
     if uploaded_file.name.endswith('.csv'):
         try:
@@ -198,20 +195,18 @@ def process_data(df):
 
     return final_json_data
 
-# =====================================================================
-# INTERFACE STREAMLIT - MODO CRIADOR (Coordenadora)
-# =====================================================================
-st.title("⚙️ Segment-to-JSON Converter")
-st.write("Faça o upload da planilha para gerar a estrutura JSON e o Link Direto.")
 
-uploaded_file = st.file_uploader("Selecione o arquivo fonte", type=["xlsx", "csv"])
+st.title("⚙️ Segmentto-JSON Converter")
+st.write("Upload the spreadsheet to generate the JSON structure and Direct Link.")
+
+uploaded_file = st.file_uploader("Select the source file", type=["xlsx", "csv"])
 
 if uploaded_file is not None:
     try:
         df = load_and_clean_data(uploaded_file)
-        st.success("Arquivo carregado com sucesso!")
+        st.success("File uploaded successfully!")
         
-        if st.button("Gerar JSON e Link"):
+        if st.button("Generate JSON and Link"):
             json_objects = process_data(df)
             json_string = json.dumps(json_objects, indent=2)
 
@@ -225,17 +220,17 @@ if uploaded_file is not None:
             shareable_link = f"{APP_URL}?data={encoded_data}"
 
             st.divider()
-            st.subheader("🔗 Seu Link de Compartilhamento")
-            st.info("Copie o link abaixo e cole na planilha do Excel. Quem clicar neste link verá apenas o JSON gerado.")
+            st.subheader("🔗 Your Sharing Link")
+            st.info("Copy the link below and paste it into the Excel spreadsheet. Anyone who clicks this link will see only the generated JSON.")
             st.code(shareable_link, language='text')
 
             st.divider()
-            st.subheader("📄 Resultado (JSON):")
-            st.warning("💡 **COMO COPIAR:** Passe o mouse no canto superior direito do bloco preto abaixo e clique no ícone (📋).")
+            st.subheader("📄 Result (JSON):")
+            st.warning("💡 **HOW TO COPY:** Hover your mouse over the top-right corner of the black block below and click the icon. (📋).")
             st.code(json_string, language='json')
             
             st.download_button(
-                label="📥 Baixar Arquivo .json",
+                label="📥 Download File .json",
                 data=json_string,
                 file_name="dataSegments_output.json",
                 mime="application/json",
@@ -243,4 +238,4 @@ if uploaded_file is not None:
             )
 
     except Exception as e:
-        st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
+        st.error(f"An error occurred while processing the file.: {e}")
