@@ -3,6 +3,7 @@ import pandas as pd
 import json
 import base64
 import zlib
+import io
 from collections import Counter
 
 # =====================================================================
@@ -32,14 +33,17 @@ if 'data' in st.query_params:
 # =====================================================================
 # FUNÇÕES DE PROCESSAMENTO (Coordenadora)
 # =====================================================================
-def load_and_clean_data(uploaded_file):
-    if uploaded_file.name.endswith('.csv'):
+
+# 1. DESEMPENHO COM CACHE: Memoriza a leitura do arquivo para deixar a navegação instantânea
+@st.cache_data
+def load_and_clean_data(file_bytes, file_name, sheet_name=None):
+    if file_name.endswith('.csv'):
         try:
-            df = pd.read_csv(uploaded_file, sep=None, engine='python')
+            df = pd.read_csv(io.BytesIO(file_bytes), sep=None, engine='python')
         except:
-            df = pd.read_csv(uploaded_file, sep=';')
+            df = pd.read_csv(io.BytesIO(file_bytes), sep=';')
     else:
-        df = pd.read_excel(uploaded_file)
+        df = pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name)
 
     first_col = str(df.columns[0]).lower()
     if 'unnamed' in first_col or 'deployment' in first_col:
@@ -209,14 +213,30 @@ uploaded_file = st.file_uploader("Selecione o arquivo fonte", type=["xlsx", "csv
 
 if uploaded_file is not None:
     try:
-        df = load_and_clean_data(uploaded_file)
-        st.success("Arquivo carregado com sucesso!")
+        # Extraindo os bytes para utilizar o cache e gerenciar abas de forma limpa
+        file_bytes = uploaded_file.getvalue()
+        file_name = uploaded_file.name
+        
+        # 2. LEITURA DE MÚLTIPLAS ABAS (Multi-sheet Handling)
+        sheet_selection = None
+        if file_name.endswith(('.xlsx', '.xls')):
+            xls = pd.ExcelFile(io.BytesIO(file_bytes))
+            sheet_names = xls.sheet_names
+            if len(sheet_names) > 1:
+                # Se tiver mais de uma aba, exibe um menu para escolher
+                sheet_selection = st.selectbox("📂 Múltiplas abas detectadas. Selecione a aba da cachoeira:", sheet_names)
+            else:
+                sheet_selection = sheet_names[0]
+
+        # Executa a limpeza e leitura passando pela camada de Cache
+        df = load_and_clean_data(file_bytes, file_name, sheet_selection)
+        st.success("Arquivo e aba carregados com sucesso!")
         
         if st.button("Analisar e Gerar JSON"):
             json_objects = process_data(df)
             
             # =================================================================
-            # 1. VALIDAÇÃO PROATIVA (O FISCAL)
+            # AUDITORIA PROATIVA (O FISCAL)
             # =================================================================
             st.divider()
             st.subheader("🕵️‍♂️ Auditoria da Planilha")
@@ -255,7 +275,7 @@ if uploaded_file is not None:
                 st.success("✅ Planilha impecável! Nenhuma anomalia estrutural encontrada.")
 
             # =================================================================
-            # 2. DASHBOARD DE AUDITORIA (RAIO-X VISUAL)
+            # DASHBOARD DE AUDITORIA (RAIO-X VISUAL)
             # =================================================================
             st.divider()
             st.subheader("📊 Raio-X da Campanha")
@@ -275,11 +295,10 @@ if uploaded_file is not None:
                     "Segmento": [obj.get("CellName") for obj in json_objects],
                     "Volume": [float(obj.get("DAGSCount", 0)) for obj in json_objects]
                 })
-                # Plota o gráfico com o Segmento no eixo X
                 st.bar_chart(chart_data.set_index("Segmento"))
 
             # =================================================================
-            # 3. GERAÇÃO DO LINK E JSON
+            # GERAÇÃO DO LINK E JSON
             # =================================================================
             json_string = json.dumps(json_objects, indent=2)
 
