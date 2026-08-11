@@ -4,9 +4,9 @@ import json
 import base64
 import zlib
 
-# =====================================================================
-# INTERFACE STREAMLIT - MODO LEITOR DE LINK (Operador)
-# =====================================================================
+
+# INTERFACE STREAMLIT - MODO LEITOR DE LINK
+
 st.set_page_config(page_title="Gerador JSON - Adobe Campaign", layout="centered")
 
 # Se existir o parâmetro 'data' na URL, ele entra no modo "Leitor de JSON"
