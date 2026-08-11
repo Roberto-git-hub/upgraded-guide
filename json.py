@@ -3,11 +3,12 @@ import pandas as pd
 import json
 import base64
 import zlib
+from collections import Counter
 
-
-# INTERFACE STREAMLIT - MODO LEITOR DE LINK
-
-st.set_page_config(page_title="Gerador JSON - Adobe Campaign", layout="centered")
+# =====================================================================
+# INTERFACE STREAMLIT - MODO LEITOR DE LINK (Operador)
+# =====================================================================
+st.set_page_config(page_title="Gerador JSON - Adobe Campaign", layout="centered", page_icon="⚙️")
 
 # Se existir o parâmetro 'data' na URL, ele entra no modo "Leitor de JSON"
 if 'data' in st.query_params:
@@ -16,18 +17,21 @@ if 'data' in st.query_params:
         compressed_data = base64.urlsafe_b64decode(st.query_params['data'])
         json_string = zlib.decompress(compressed_data).decode('utf-8')
         
-        st.title("📄 JSON Viewer (Workflow)")
-        st.success("JSON successfully loaded via link!")
-        st.warning("💡 **HOW TO COPY:** Hover your mouse over the top-right corner of the black block below and click the clipboard icon (📋) to copy everything.")
+        st.title("📄 Visualizador de JSON (Workflow)")
+        st.success("JSON carregado com sucesso via link!")
+        st.warning("💡 COMO COPIAR: Passe o mouse no canto superior direito do bloco preto abaixo e clique no ícone de prancheta (📋) para copiar tudo.")
         
         # Mostra apenas o código e interrompe o resto do app
         st.code(json_string, language='json')
         st.stop() 
     except Exception as e:
-        st.error("⚠️ The link appears to be broken or corrupted. Please ask for it to be generated again.")
+        st.error("⚠️ O link parece estar quebrado ou corrompido. Peça para gerar novamente.")
         st.stop()
 
 
+# =====================================================================
+# FUNÇÕES DE PROCESSAMENTO (Coordenadora)
+# =====================================================================
 def load_and_clean_data(uploaded_file):
     if uploaded_file.name.endswith('.csv'):
         try:
@@ -95,7 +99,7 @@ def process_data(df):
         if not dag_segment_name: dag_segment_name = cell_name
         if not cell_name: cell_name = dag_segment_name
 
-        # LIMPEZA DE CARACTERES ESPECIAIS (Evita quebra de XML no Adobe)
+        # LIMPEZA DE CARACTERES ESPECIAIS
         dag_segment_name = dag_segment_name.replace('&', 'AND').replace(' ', '_')
         cell_name = cell_name.replace('&', 'AND').replace(' ', '_')
 
@@ -195,42 +199,106 @@ def process_data(df):
 
     return final_json_data
 
+# =====================================================================
+# INTERFACE STREAMLIT - MODO CRIADOR (Coordenadora)
+# =====================================================================
+st.title("⚙️ Segment-to-JSON Converter")
+st.write("Faça o upload da planilha para auditar, gerar a estrutura JSON e o Link Direto.")
 
-st.title("⚙️ Segmentto-JSON Converter")
-st.write("Upload the spreadsheet to generate the JSON structure and Direct Link.")
-
-uploaded_file = st.file_uploader("Select the source file", type=["xlsx", "csv"])
+uploaded_file = st.file_uploader("Selecione o arquivo fonte", type=["xlsx", "csv"])
 
 if uploaded_file is not None:
     try:
         df = load_and_clean_data(uploaded_file)
-        st.success("File uploaded successfully!")
+        st.success("Arquivo carregado com sucesso!")
         
-        if st.button("Generate JSON and Link"):
+        if st.button("Analisar e Gerar JSON"):
             json_objects = process_data(df)
+            
+            # =================================================================
+            # 1. VALIDAÇÃO PROATIVA (O FISCAL)
+            # =================================================================
+            st.divider()
+            st.subheader("🕵️‍♂️ Auditoria da Planilha")
+            
+            errors = []
+            warnings = []
+            
+            # Checagem de SegmentCode Duplicado
+            segment_codes = [obj.get("SegmentCode", "") for obj in json_objects]
+            counts = Counter(segment_codes)
+            duplicates = [code for code, count in counts.items() if count > 1 and code != ""]
+            
+            if duplicates:
+                errors.append(f"Códigos de Segmento Duplicados (Causa erro no Adobe): {', '.join(duplicates)}")
+                
+            # Checagem de campos obrigatórios vazios
+            for obj in json_objects:
+                if not obj.get("CellName"):
+                    warnings.append(f"CellName vazio no WaterfallId {obj.get('WaterfallId')}")
+                if not obj.get("SlineCode"):
+                    warnings.append(f"SlineCode vazio no WaterfallId {obj.get('WaterfallId')}")
+                    
+            # Exibição dos alertas
+            if errors:
+                st.error("🚨 Erros Críticos Encontrados. Corrija a planilha antes de gerar o link!")
+                for e in errors:
+                    st.write(f"- {e}")
+                st.stop() # Bloqueia a aplicação aqui se tiver erro fatal
+                
+            if warnings:
+                st.warning("⚠️ Avisos de Preenchimento (Verifique se é proposital):")
+                for w in warnings:
+                    st.write(f"- {w}")
+                    
+            if not errors and not warnings:
+                st.success("✅ Planilha impecável! Nenhuma anomalia estrutural encontrada.")
+
+            # =================================================================
+            # 2. DASHBOARD DE AUDITORIA (RAIO-X VISUAL)
+            # =================================================================
+            st.divider()
+            st.subheader("📊 Raio-X da Campanha")
+            
+            total_segments = len(json_objects)
+            total_ab_tests = sum(1 for obj in json_objects if obj.get("Split") == 0.5) // 2
+            total_volume = sum(float(obj.get("DAGSCount", 0)) for obj in json_objects)
+            
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Total de Segmentos", total_segments)
+            col2.metric("Testes A/B (Pares)", total_ab_tests)
+            col3.metric("Volume Estimado", f"{total_volume:,.0f}".replace(",", "."))
+            
+            if total_volume > 0:
+                st.write("**Distribuição Estimada por Segmento:**")
+                chart_data = pd.DataFrame({
+                    "Segmento": [obj.get("CellName") for obj in json_objects],
+                    "Volume": [float(obj.get("DAGSCount", 0)) for obj in json_objects]
+                })
+                # Plota o gráfico com o Segmento no eixo X
+                st.bar_chart(chart_data.set_index("Segmento"))
+
+            # =================================================================
+            # 3. GERAÇÃO DO LINK E JSON
+            # =================================================================
             json_string = json.dumps(json_objects, indent=2)
 
-            # --- LÓGICA DE CRIAÇÃO DO LINK ---
-            # Substitua esta URL caso o seu link do Streamlit seja diferente!
             APP_URL = "https://upgraded-guide-bxpthdptstyfwaor2naznv.streamlit.app"
-            
-            # Compacta e codifica o JSON para caber na URL
             compressed_data = zlib.compress(json_string.encode('utf-8'))
             encoded_data = base64.urlsafe_b64encode(compressed_data).decode('utf-8')
             shareable_link = f"{APP_URL}?data={encoded_data}"
 
             st.divider()
-            st.subheader("🔗 Your Sharing Link")
-            st.info("Copy the link below and paste it into the Excel spreadsheet. Anyone who clicks this link will see only the generated JSON.")
+            st.subheader("🔗 Seu Link de Compartilhamento")
+            st.info("Copie o link abaixo e cole na planilha. Quem clicar verá diretamente o JSON.")
             st.code(shareable_link, language='text')
 
             st.divider()
-            st.subheader("📄 Result (JSON):")
-            st.warning("💡 **HOW TO COPY:** Hover your mouse over the top-right corner of the black block below and click the icon. (📋).")
+            st.subheader("📄 Resultado (JSON Bruto):")
             st.code(json_string, language='json')
             
             st.download_button(
-                label="📥 Download File .json",
+                label="📥 Baixar Arquivo .json",
                 data=json_string,
                 file_name="dataSegments_output.json",
                 mime="application/json",
@@ -238,4 +306,4 @@ if uploaded_file is not None:
             )
 
     except Exception as e:
-        st.error(f"An error occurred while processing the file.: {e}")
+        st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
