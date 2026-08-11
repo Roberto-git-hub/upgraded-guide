@@ -1,7 +1,36 @@
 import streamlit as st
 import pandas as pd
 import json
+import base64
+import zlib
 
+# =====================================================================
+# INTERFACE STREAMLIT - MODO LEITOR DE LINK (Operador)
+# =====================================================================
+st.set_page_config(page_title="Gerador JSON - Adobe Campaign", layout="centered")
+
+# Se existir o parâmetro 'data' na URL, ele entra no modo "Leitor de JSON"
+if 'data' in st.query_params:
+    try:
+        # Pega os dados da URL, descompacta (zlib) e decodifica (base64)
+        compressed_data = base64.urlsafe_b64decode(st.query_params['data'])
+        json_string = zlib.decompress(compressed_data).decode('utf-8')
+        
+        st.title("📄 Visualizador de JSON (Workflow)")
+        st.success("JSON carregado com sucesso via link!")
+        st.warning("💡 **COMO COPIAR:** Passe o mouse no canto superior direito do bloco preto abaixo e clique no ícone de prancheta (📋) para copiar tudo.")
+        
+        # Mostra apenas o código e interrompe o resto do app
+        st.code(json_string, language='json')
+        st.stop() 
+    except Exception as e:
+        st.error("⚠️ O link parece estar quebrado ou corrompido. Peça para gerar novamente.")
+        st.stop()
+
+
+# =====================================================================
+# FUNÇÕES DE PROCESSAMENTO (Coordenadora)
+# =====================================================================
 def load_and_clean_data(uploaded_file):
     if uploaded_file.name.endswith('.csv'):
         try:
@@ -38,19 +67,15 @@ def process_data(df):
         return ''
 
     for _, row in df.iterrows():
-        # =====================================================================
-        # 1. HARD STOP (Quebra-Mola): Para a leitura se chegar na área de referência
-        # =====================================================================
+        # HARD STOP: Para a leitura se chegar na área de referência
         row_text = ' '.join([str(val).lower() for val in row.values])
         if 'reference for combination' in row_text or 'suppression segments' in row_text:
-            break  # Interrompe o loop imediatamente. O JSON acaba aqui!
+            break  
 
-        # =====================================================================
-        # 2. FILTRO N/A: Pula linhas onde o Waterfall Order for "N/A"
-        # =====================================================================
+        # FILTRO N/A: Pula linhas onde o Waterfall Order for "N/A"
         waterfall_order = get_val(row, ['Waterfall Order', 'WaterfallOrder'])
         if waterfall_order.lower() == 'n/a':
-            continue  # Pula esta linha e vai para a próxima
+            continue  
 
         segment_code = get_val(row, ['Segment Code', 'SegmentCode', 'Additional SegmentCode'])
         
@@ -73,9 +98,7 @@ def process_data(df):
         if not dag_segment_name: dag_segment_name = cell_name
         if not cell_name: cell_name = dag_segment_name
 
-        # =====================================================================
-        # 3. LIMPEZA DE CARACTERES ESPECIAIS (Evita quebra de XML no Adobe)
-        # =====================================================================
+        # LIMPEZA DE CARACTERES ESPECIAIS (Evita quebra de XML no Adobe)
         dag_segment_name = dag_segment_name.replace('&', 'AND').replace(' ', '_')
         cell_name = cell_name.replace('&', 'AND').replace(' ', '_')
 
@@ -176,36 +199,43 @@ def process_data(df):
     return final_json_data
 
 # =====================================================================
-# INTERFACE WEB STREAMLIT
+# INTERFACE STREAMLIT - MODO CRIADOR (Coordenadora)
 # =====================================================================
-st.set_page_config(page_title="Gerador JSON - Adobe Campaign", layout="centered")
-
 st.title("⚙️ Segment-to-JSON Converter")
-st.write("Upload your Excel (.xlsx) or CSV file to generate the JSON structure for segments.")
+st.write("Faça o upload da planilha para gerar a estrutura JSON e o Link Direto.")
 
-uploaded_file = st.file_uploader("Select the source file", type=["xlsx", "csv"])
+uploaded_file = st.file_uploader("Selecione o arquivo fonte", type=["xlsx", "csv"])
 
 if uploaded_file is not None:
     try:
         df = load_and_clean_data(uploaded_file)
-
-        st.success("File uploaded and header successfully identified!")
-        st.dataframe(df.head())
-
-        if st.button("To generate JSON"):
+        st.success("Arquivo carregado com sucesso!")
+        
+        if st.button("Gerar JSON e Link"):
             json_objects = process_data(df)
             json_string = json.dumps(json_objects, indent=2)
 
-            st.subheader("Final Result (JSON):")
+            # --- LÓGICA DE CRIAÇÃO DO LINK ---
+            # Substitua esta URL caso o seu link do Streamlit seja diferente!
+            APP_URL = "https://upgraded-guide-bxpthdptstyfwaor2naznv.streamlit.app"
             
-            # Caixa de destaque orientando a equipe sobre como copiar com um clique!
-            st.warning("💡 **HOW TO COPY:** Hover your mouse over the **top-right corner** of the dark block below. A clipboard icon (📋) will appear. Click it once to copy the entire code without needing to scroll!")
+            # Compacta e codifica o JSON para caber na URL
+            compressed_data = zlib.compress(json_string.encode('utf-8'))
+            encoded_data = base64.urlsafe_b64encode(compressed_data).decode('utf-8')
+            shareable_link = f"{APP_URL}?data={encoded_data}"
 
-            # O st.code possui o botão de cópia nativo e já renderiza bonito
+            st.divider()
+            st.subheader("🔗 Seu Link de Compartilhamento")
+            st.info("Copie o link abaixo e cole na planilha do Excel. Quem clicar neste link verá apenas o JSON gerado.")
+            st.code(shareable_link, language='text')
+
+            st.divider()
+            st.subheader("📄 Resultado (JSON):")
+            st.warning("💡 **COMO COPIAR:** Passe o mouse no canto superior direito do bloco preto abaixo e clique no ícone (📋).")
             st.code(json_string, language='json')
             
             st.download_button(
-                label="📥 Download File .json",
+                label="📥 Baixar Arquivo .json",
                 data=json_string,
                 file_name="dataSegments_output.json",
                 mime="application/json",
