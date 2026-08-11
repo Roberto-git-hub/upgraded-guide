@@ -224,13 +224,13 @@ if uploaded_file is not None:
             errors = []
             warnings = []
             
-            # Checagem de SegmentCode Duplicado
-            segment_codes = [obj.get("SegmentCode", "") for obj in json_objects]
-            counts = Counter(segment_codes)
-            duplicates = [code for code, count in counts.items() if count > 1 and code != ""]
+            # Checagem de CellName Duplicado (O que causa erro no Adobe)
+            cell_names = [obj.get("CellName", "") for obj in json_objects]
+            counts = Counter(cell_names)
+            duplicates = [name for name, count in counts.items() if count > 1 and name != ""]
             
             if duplicates:
-                errors.append(f"Códigos de Segmento Duplicados (Causa erro no Adobe): {', '.join(duplicates)}")
+                errors.append(f"Nomes de Célula (CellName) Duplicados (Causa erro no Adobe): {', '.join(duplicates)}")
                 
             # Checagem de campos obrigatórios vazios
             for obj in json_objects:
