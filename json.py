@@ -73,6 +73,12 @@ def process_data(df):
         if not dag_segment_name: dag_segment_name = cell_name
         if not cell_name: cell_name = dag_segment_name
 
+        # =====================================================================
+        # 3. LIMPEZA DE CARACTERES ESPECIAIS (Evita quebra de XML no Adobe)
+        # =====================================================================
+        dag_segment_name = dag_segment_name.replace('&', 'AND').replace(' ', '_')
+        cell_name = cell_name.replace('&', 'AND').replace(' ', '_')
+
         dag_count_col = None
         for name in ['dag count', 'count']:
             if name in cols:
