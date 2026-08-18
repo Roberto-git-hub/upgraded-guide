@@ -129,6 +129,7 @@ def process_data(df):
         has_split_in_code = (
             "50%:" in seg_code_lower or 
             "50%" in seg_code_lower or 
+            "(50%)" in seg_code_lower or
             "/" in segment_code or 
             "\n" in segment_code
         )
@@ -145,6 +146,7 @@ def process_data(df):
         is_split = has_split_in_code or has_split_in_volume
 
         if is_split:
+            # DIVISÃO DO SEGMENT CODE
             if "\n" in segment_code:
                 parts = [x.strip() for x in segment_code.split("\n") if x.strip()]
             elif "/" in segment_code:
@@ -152,9 +154,22 @@ def process_data(df):
             else:
                 parts = [segment_code, segment_code]
 
-            code1 = parts[0].replace("50%:", "").replace("50%", "").strip()
+            # DIVISÃO DO SLINE CODE
+            if "\n" in sline_code:
+                sl_parts = [x.strip() for x in sline_code.split("\n") if x.strip()]
+            elif "/" in sline_code:
+                sl_parts = [x.strip() for x in sline_code.split("/", 1)]
+            else:
+                sl_parts = [sline_code, sline_code]
+
+            # LIMPEZA FINAL DOS NOMES (Removendo "50%:", "50%" e "(50%)")
+            code1 = parts[0].replace("(50%)", "").replace("50%:", "").replace("50%", "").strip()
             code2 = parts[1] if len(parts) > 1 else code1
-            code2 = code2.replace("50%:", "").replace("50%", "").strip()
+            code2 = code2.replace("(50%)", "").replace("50%:", "").replace("50%", "").strip()
+
+            sl_code1 = sl_parts[0].replace("(50%)", "").replace("50%:", "").replace("50%", "").strip()
+            sl_code2 = sl_parts[1] if len(sl_parts) > 1 else sl_code1
+            sl_code2 = sl_code2.replace("(50%)", "").replace("50%:", "").replace("50%", "").strip()
 
             records = [
                 {
@@ -163,7 +178,7 @@ def process_data(df):
                     "CellName": cell_name,
                     "Split": 0.5,
                     "SegmentCode": code1,
-                    "SlineCode": sline_code
+                    "SlineCode": sl_code1
                 },
                 {
                     "WaterfallId": waterfall_id + 1,
@@ -171,7 +186,7 @@ def process_data(df):
                     "CellName": f"{cell_name}_Test",
                     "Split": 0.5,
                     "SegmentCode": code2,
-                    "SlineCode": sline_code
+                    "SlineCode": sl_code2
                 }
             ]
             waterfall_id += 2
@@ -184,14 +199,17 @@ def process_data(df):
                 final_json_data.append(r)
 
         else:
-            code = segment_code.replace("100%:", "").strip()
+            # LIMPEZA SE FOR 100%
+            code = segment_code.replace("(100%)", "").replace("100%:", "").replace("100%", "").strip()
+            sl_code = sline_code.replace("(100%)", "").replace("100%:", "").replace("100%", "").strip()
+            
             record = {
                 "WaterfallId": waterfall_id,
                 "DAGSegmentName": dag_segment_name,
                 "CellName": cell_name,
                 "Split": 1.0,
                 "SegmentCode": code,
-                "SlineCode": sline_code
+                "SlineCode": sl_code
             }
             waterfall_id += 1
 
