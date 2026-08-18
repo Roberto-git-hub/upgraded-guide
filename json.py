@@ -162,6 +162,23 @@ def process_data(df):
             else:
                 sl_parts = [sline_code, sline_code]
 
+            # =================================================================
+            # CORREÇÃO DE ORDEM (CONTROL vs TEST)
+            # Se o Control estiver na segunda linha, invertemos automaticamente!
+            # =================================================================
+            if len(parts) >= 2:
+                p0_lower = parts[0].lower()
+                p1_lower = parts[1].lower()
+                is_p1_control = 'control' in p1_lower or 'ctrl' in p1_lower
+                is_p0_control = 'control' in p0_lower or 'ctrl' in p0_lower
+                
+                # Se a segunda linha for Control (e a primeira não for), inverte tudo
+                if is_p1_control and not is_p0_control:
+                    parts[0], parts[1] = parts[1], parts[0]
+                    # Inverte também as linhas de assunto para acompanharem corretamente
+                    if len(sl_parts) >= 2:
+                        sl_parts[0], sl_parts[1] = sl_parts[1], sl_parts[0]
+
             # LIMPEZA FINAL DOS NOMES (Removendo "50%:", "50%" e "(50%)")
             code1 = parts[0].replace("(50%)", "").replace("50%:", "").replace("50%", "").strip()
             code2 = parts[1] if len(parts) > 1 else code1
