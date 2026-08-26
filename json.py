@@ -200,7 +200,7 @@ def process_data(df):
                 {
                     "WaterfallId": waterfall_id + 1,
                     "DAGSegmentName": dag_segment_name,
-                    "CellName": f"{cell_name}_Test",
+                    "CellName": f"{cell_name}-test",
                     "Split": 0.5,
                     "SegmentCode": code2,
                     "SlineCode": sl_code2
