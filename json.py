@@ -37,26 +37,18 @@ if 'data' in st.query_params:
 
 # NOVO: Função para extrair o cabeçalho (Metadata, Notas e Checklist) antes de limpar a tabela
 @st.cache_data
-def extract_metadata(file_bytes, file_name, sheet_name=None):
-    try:
-        if file_name.endswith('.csv'):
-            df_raw = pd.read_csv(io.BytesIO(file_bytes), sep=None, engine='python', header=None)
-        else:
-            df_raw = pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name, header=None)
-    except:
-        return {}
-
-    meta = {
+meta = {
         "campaign_name": "",
         "deployment_date": "",
         "user": "",
         "cid": "",
         "notes": [],
-        "include": "",
-        "exclude": ""
+        "include": [], # Agora são listas para guardar várias linhas
+        "exclude": []
     }
 
     notes_col_idx = None
+    current_mode = None # Rastreador para saber se estamos no Include ou Exclude
 
     for idx, row in df_raw.iterrows():
         # Para a leitura quando chegar na tabela da Waterfall
@@ -69,9 +61,7 @@ def extract_metadata(file_bytes, file_name, sheet_name=None):
 
         # Mapeamento do Resumo
         if "deployment name" in col0:
-            # Limpa o "_v2" (maiúsculo ou minúsculo) do final do nome
             meta["campaign_name"] = re.sub(r'(?i)_v2$', '', col1).strip()
-            # Identifica em qual coluna está a palavra "NOTES"
             for i, val in enumerate(row.values):
                 if str(val).strip().lower() == 'notes':
                     notes_col_idx = i
@@ -80,16 +70,27 @@ def extract_metadata(file_bytes, file_name, sheet_name=None):
         elif col0 == "user":
             meta["user"] = col1
         elif col0 == "cid":
-            # Limpa o "_segment" (maiúsculo ou minúsculo) do final do CID
             meta["cid"] = re.sub(r'(?i)_segment$', '', col1).strip()
             
-        # Mapeamento do Checklist
+        # Mapeamento do Checklist (Com suporte a múltiplas linhas "AND")
         elif "only include" in col0:
+            current_mode = "include"
             vals = [str(x).strip() for x in row.values[1:] if pd.notna(x) and str(x).strip().lower() != 'nan']
-            meta["include"] = " | ".join(vals) if vals else ""
+            if vals: meta["include"].append(" | ".join(vals))
+            
         elif "exclude" in col0:
+            current_mode = "exclude"
             vals = [str(x).strip() for x in row.values[1:] if pd.notna(x) and str(x).strip().lower() != 'nan']
-            meta["exclude"] = " | ".join(vals) if vals else ""
+            if vals: meta["exclude"].append(" | ".join(vals))
+            
+        elif col0 == "and" and current_mode:
+            # Se a linha começa com AND, ele joga na lista que estiver ativa
+            vals = [str(x).strip() for x in row.values[1:] if pd.notna(x) and str(x).strip().lower() != 'nan']
+            if vals: meta[current_mode].append(" | ".join(vals))
+            
+        elif col0 and col0 not in ["and", "criteria:"]:
+            # Se for outra coisa (ex: Send Volume), desliga o rastreador
+            current_mode = None
 
         # Mapeamento dos Alertas (Notes)
         if notes_col_idx is not None and len(row.values) > notes_col_idx:
@@ -441,10 +442,22 @@ if uploaded_file is not None:
             st.divider()
             st.subheader("✅ 4. Checklist de Supressão e Inclusão")
             inc_col, exc_col = st.columns(2)
+            
             with inc_col:
-                st.success(f"**🎯 ONLY INCLUDE (Filtros Globais):**\n\n{meta.get('include', 'N/A')}")
+                st.success("**🎯 ONLY INCLUDE (Filtros Globais):**")
+                if meta.get("include"):
+                    for item in meta["include"]:
+                        st.write(f"- {item}")
+                else:
+                    st.write("N/A")
+                    
             with exc_col:
-                st.error(f"**🚫 EXCLUDE (Supressões):**\n\n{meta.get('exclude', 'N/A')}")
+                st.error("**🚫 EXCLUDE (Supressões):**")
+                if meta.get("exclude"):
+                    for item in meta["exclude"]:
+                        st.write(f"- {item}")
+                else:
+                    st.write("N/A")
 
 
             # =================================================================
