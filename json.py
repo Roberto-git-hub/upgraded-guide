@@ -37,7 +37,16 @@ if 'data' in st.query_params:
 
 # NOVO: Função para extrair o cabeçalho (Metadata, Notas e Checklist) antes de limpar a tabela
 @st.cache_data
-meta = {
+def extract_metadata(file_bytes, file_name, sheet_name=None):
+    try:
+        if file_name.endswith('.csv'):
+            df_raw = pd.read_csv(io.BytesIO(file_bytes), sep=None, engine='python', header=None)
+        else:
+            df_raw = pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name, header=None)
+    except:
+        return {}
+
+    meta = {
         "campaign_name": "",
         "deployment_date": "",
         "user": "",
