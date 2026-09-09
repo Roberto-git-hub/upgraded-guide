@@ -1,3 +1,4 @@
+import re
 import streamlit as st
 import pandas as pd
 import json
@@ -68,7 +69,8 @@ def extract_metadata(file_bytes, file_name, sheet_name=None):
 
         # Mapeamento do Resumo
         if "deployment name" in col0:
-            meta["campaign_name"] = col1
+            # Limpa o "_v2" (maiúsculo ou minúsculo) do final do nome
+            meta["campaign_name"] = re.sub(r'(?i)_v2$', '', col1).strip()
             # Identifica em qual coluna está a palavra "NOTES"
             for i, val in enumerate(row.values):
                 if str(val).strip().lower() == 'notes':
@@ -78,7 +80,8 @@ def extract_metadata(file_bytes, file_name, sheet_name=None):
         elif col0 == "user":
             meta["user"] = col1
         elif col0 == "cid":
-            meta["cid"] = col1
+            # Limpa o "_segment" (maiúsculo ou minúsculo) do final do CID
+            meta["cid"] = re.sub(r'(?i)_segment$', '', col1).strip()
             
         # Mapeamento do Checklist
         elif "only include" in col0:
@@ -343,11 +346,19 @@ if uploaded_file is not None:
             st.divider()
             st.subheader("📋 1. Resumo da Campanha (Metadata)")
             colA, colB, colC = st.columns(3)
-            colA.metric("Campanha", meta.get("campaign_name", "N/A"))
-            colB.metric("Data Prevista (Deployment)", meta.get("deployment_date", "N/A"))
-            colC.metric("Solicitante (User)", meta.get("user", "N/A"))
+            
+            with colA:
+                st.caption("Campanha")
+                st.write(f"**{meta.get('campaign_name', 'N/A')}**")
+            with colB:
+                st.caption("Data Prevista (Deployment)")
+                st.write(f"**{meta.get('deployment_date', 'N/A')}**")
+            with colC:
+                st.caption("Solicitante (User)")
+                st.write(f"**{meta.get('user', 'N/A')}**")
+                
             if meta.get("cid"):
-                st.caption(f"**CID (Rastreio):** `{meta.get('cid')}`")
+                st.markdown(f"**CID (Rastreio):** `{meta.get('cid')}`")
 
             # =================================================================
             # 2. ALERTAS DE PERSONALIZAÇÃO (NOTES)
