@@ -34,6 +34,70 @@ if 'data' in st.query_params:
 # FUNÇÕES DE PROCESSAMENTO (Coordenadora)
 # =====================================================================
 
+# NOVO: Função para extrair o cabeçalho (Metadata, Notas e Checklist) antes de limpar a tabela
+@st.cache_data
+def extract_metadata(file_bytes, file_name, sheet_name=None):
+    try:
+        if file_name.endswith('.csv'):
+            df_raw = pd.read_csv(io.BytesIO(file_bytes), sep=None, engine='python', header=None)
+        else:
+            df_raw = pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name, header=None)
+    except:
+        return {}
+
+    meta = {
+        "campaign_name": "",
+        "deployment_date": "",
+        "user": "",
+        "cid": "",
+        "notes": [],
+        "include": "",
+        "exclude": ""
+    }
+
+    notes_col_idx = None
+
+    for idx, row in df_raw.iterrows():
+        # Para a leitura quando chegar na tabela da Waterfall
+        row_str = " ".join([str(x).lower() for x in row.values if pd.notna(x)])
+        if 'waterfall order' in row_str or 'dag segment name' in row_str:
+            break
+
+        col0 = str(row.values[0]).strip().lower() if pd.notna(row.values[0]) else ""
+        col1 = str(row.values[1]).strip() if len(row.values) > 1 and pd.notna(row.values[1]) else ""
+
+        # Mapeamento do Resumo
+        if "deployment name" in col0:
+            meta["campaign_name"] = col1
+            # Identifica em qual coluna está a palavra "NOTES"
+            for i, val in enumerate(row.values):
+                if str(val).strip().lower() == 'notes':
+                    notes_col_idx = i
+        elif "deployment date" in col0:
+            meta["deployment_date"] = col1
+        elif col0 == "user":
+            meta["user"] = col1
+        elif col0 == "cid":
+            meta["cid"] = col1
+            
+        # Mapeamento do Checklist
+        elif "only include" in col0:
+            vals = [str(x).strip() for x in row.values[1:] if pd.notna(x) and str(x).strip().lower() != 'nan']
+            meta["include"] = " | ".join(vals) if vals else ""
+        elif "exclude" in col0:
+            vals = [str(x).strip() for x in row.values[1:] if pd.notna(x) and str(x).strip().lower() != 'nan']
+            meta["exclude"] = " | ".join(vals) if vals else ""
+
+        # Mapeamento dos Alertas (Notes)
+        if notes_col_idx is not None and len(row.values) > notes_col_idx:
+            note_val = str(row.values[notes_col_idx]).strip()
+            if pd.notna(row.values[notes_col_idx]) and note_val and note_val.lower() not in ['nan', 'notes']:
+                if note_val not in meta["notes"]:
+                    meta["notes"].append(note_val)
+
+    return meta
+
+
 # 1. DESEMPENHO COM CACHE: Memoriza a leitura do arquivo para deixar a navegação instantânea
 @st.cache_data
 def load_and_clean_data(file_bytes, file_name, sheet_name=None):
@@ -164,7 +228,6 @@ def process_data(df):
 
             # =================================================================
             # CORREÇÃO DE ORDEM (CONTROL vs TEST)
-            # Se o Control estiver na segunda linha, invertemos automaticamente!
             # =================================================================
             if len(parts) >= 2:
                 p0_lower = parts[0].lower()
@@ -175,11 +238,10 @@ def process_data(df):
                 # Se a segunda linha for Control (e a primeira não for), inverte tudo
                 if is_p1_control and not is_p0_control:
                     parts[0], parts[1] = parts[1], parts[0]
-                    # Inverte também as linhas de assunto para acompanharem corretamente
                     if len(sl_parts) >= 2:
                         sl_parts[0], sl_parts[1] = sl_parts[1], sl_parts[0]
 
-            # LIMPEZA FINAL DOS NOMES (Removendo "50%:", "50%" e "(50%)")
+            # LIMPEZA FINAL DOS NOMES
             code1 = parts[0].replace("(50%)", "").replace("50%:", "").replace("50%", "").strip()
             code2 = parts[1] if len(parts) > 1 else code1
             code2 = code2.replace("(50%)", "").replace("50%:", "").replace("50%", "").strip()
@@ -209,6 +271,7 @@ def process_data(df):
             waterfall_id += 2
 
             for r in records:
+                r["_Source"] = source  # Campo oculto para o Raio-X
                 if source.upper() != "ACM":
                     r["DAGSCount"] = dag_count
                     r["isABTest"] = "FALSE"
@@ -229,6 +292,8 @@ def process_data(df):
                 "SlineCode": sl_code
             }
             waterfall_id += 1
+            
+            record["_Source"] = source # Campo oculto para o Raio-X
 
             if source.upper() != "ACM":
                 record["DAGSCount"] = dag_count
@@ -263,13 +328,35 @@ if uploaded_file is not None:
             else:
                 sheet_selection = sheet_names[0]
 
-        # Executa a limpeza e leitura passando pela camada de Cache
+        # Executa a extração dos novos dados visuais e a limpeza do DF
+        meta = extract_metadata(file_bytes, file_name, sheet_selection)
         df = load_and_clean_data(file_bytes, file_name, sheet_selection)
+        
         st.success("Arquivo e aba carregados com sucesso!")
         
         if st.button("Analisar e Gerar JSON"):
             json_objects = process_data(df)
             
+            # =================================================================
+            # 1. RESUMO DA CAMPANHA (METADATA)
+            # =================================================================
+            st.divider()
+            st.subheader("📋 1. Resumo da Campanha (Metadata)")
+            colA, colB, colC = st.columns(3)
+            colA.metric("Campanha", meta.get("campaign_name", "N/A"))
+            colB.metric("Data Prevista (Deployment)", meta.get("deployment_date", "N/A"))
+            colC.metric("Solicitante (User)", meta.get("user", "N/A"))
+            if meta.get("cid"):
+                st.caption(f"**CID (Rastreio):** `{meta.get('cid')}`")
+
+            # =================================================================
+            # 2. ALERTAS DE PERSONALIZAÇÃO (NOTES)
+            # =================================================================
+            if meta.get("notes"):
+                st.subheader("⚠️ 2. Alertas de Personalização (Notes)")
+                for note in meta.get("notes", []):
+                    st.info(note, icon="💡")
+
             # =================================================================
             # AUDITORIA PROATIVA (O FISCAL)
             # =================================================================
@@ -310,19 +397,24 @@ if uploaded_file is not None:
                 st.success("✅ Planilha impecável! Nenhuma anomalia estrutural encontrada.")
 
             # =================================================================
-            # DASHBOARD DE AUDITORIA (RAIO-X VISUAL)
+            # 3. VISÃO GERAL DA WATERFALL (RAIO-X VISUAL MELHORADO)
             # =================================================================
             st.divider()
-            st.subheader("📊 Raio-X da Campanha")
+            st.subheader("📊 3. Visão Geral da Waterfall")
             
             total_segments = len(json_objects)
             total_ab_tests = sum(1 for obj in json_objects if obj.get("Split") == 0.5) // 2
             total_volume = sum(float(obj.get("DAGSCount", 0)) for obj in json_objects)
             
-            col1, col2, col3 = st.columns(3)
+            # Utiliza a chave oculta Source que criamos no process_data
+            total_acm = sum(1 for obj in json_objects if str(obj.get("_Source", "")).upper() == "ACM")
+            total_dag = total_segments - total_acm
+            
+            col1, col2, col3, col4 = st.columns(4)
             col1.metric("Total de Segmentos", total_segments)
-            col2.metric("Testes A/B (Pares)", total_ab_tests)
-            col3.metric("Volume Estimado", f"{total_volume:,.0f}".replace(",", "."))
+            col2.metric("Nativos (ACM)", total_acm)
+            col3.metric("Externos (DAG)", total_dag)
+            col4.metric("Volume Estimado", f"{total_volume:,.0f}".replace(",", "."))
             
             if total_volume > 0:
                 st.write("**Distribuição Estimada por Segmento:**")
@@ -333,8 +425,25 @@ if uploaded_file is not None:
                 st.bar_chart(chart_data.set_index("Segmento"))
 
             # =================================================================
-            # GERAÇÃO DO LINK E JSON
+            # 4. CHECKLIST DE SUPRESSÃO E INCLUSÃO
             # =================================================================
+            st.divider()
+            st.subheader("✅ 4. Checklist de Supressão e Inclusão")
+            inc_col, exc_col = st.columns(2)
+            with inc_col:
+                st.success(f"**🎯 ONLY INCLUDE (Filtros Globais):**\n\n{meta.get('include', 'N/A')}")
+            with exc_col:
+                st.error(f"**🚫 EXCLUDE (Supressões):**\n\n{meta.get('exclude', 'N/A')}")
+
+
+            # =================================================================
+            # GERAÇÃO DO LINK E JSON FINAL
+            # =================================================================
+            
+            # Limpa o campo auxiliar "_Source" para não sujar o JSON do Adobe
+            for obj in json_objects:
+                obj.pop("_Source", None)
+                
             json_string = json.dumps(json_objects, indent=2)
 
             APP_URL = "https://upgraded-guide-bxpthdptstyfwaor2naznv.streamlit.app"
