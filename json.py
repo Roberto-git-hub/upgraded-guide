@@ -35,6 +35,7 @@ if 'data' in st.query_params:
 # FUNÇÕES DE PROCESSAMENTO (Coordenadora)
 # =====================================================================
 
+# NOVO: Função para extrair o cabeçalho (Metadata, Notas e Checklist) antes de limpar a tabela
 @st.cache_data
 def extract_metadata(file_bytes, file_name, sheet_name=None):
     try:
@@ -97,7 +98,7 @@ def extract_metadata(file_bytes, file_name, sheet_name=None):
             if vals: meta[current_mode].append(" | ".join(vals))
             
         elif col0 and col0 not in ["and", "criteria:"]:
-            # Se for outra coisa, desliga o rastreador
+            # Se for outra coisa (ex: Send Volume), desliga o rastreador
             current_mode = None
 
         # Mapeamento dos Alertas (Notes)
@@ -110,6 +111,7 @@ def extract_metadata(file_bytes, file_name, sheet_name=None):
     return meta
 
 
+# 1. DESEMPENHO COM CACHE: Memoriza a leitura do arquivo para deixar a navegação instantânea
 @st.cache_data
 def load_and_clean_data(file_bytes, file_name, sheet_name=None):
     if file_name.endswith('.csv'):
@@ -405,12 +407,23 @@ if uploaded_file is not None:
             if duplicates:
                 errors.append(f"Nomes de Célula (CellName) Duplicados (Causa erro no Adobe): {', '.join(duplicates)}")
                 
-            # Checagem de campos obrigatórios vazios
+            # Checagem de campos obrigatórios vazios E Limite de 64 Caracteres (Adobe Constraint)
             for obj in json_objects:
-                if not obj.get("CellName"):
-                    warnings.append(f"CellName vazio no WaterfallId {obj.get('WaterfallId')}")
+                c_name = obj.get("CellName", "")
+                d_name = obj.get("DAGSegmentName", "")
+                w_id = obj.get("WaterfallId")
+                
+                # Campos vazios
+                if not c_name:
+                    warnings.append(f"CellName vazio no WaterfallId {w_id}")
                 if not obj.get("SlineCode"):
-                    warnings.append(f"SlineCode vazio no WaterfallId {obj.get('WaterfallId')}")
+                    warnings.append(f"SlineCode vazio no WaterfallId {w_id}")
+                    
+                # Validação Crítica de Limite de Caracteres do Adobe Campaign (Max 64)
+                if len(c_name) > 64:
+                    errors.append(f"CellName '{c_name}' tem {len(c_name)} caracteres! (Máximo permitido pelo Adobe é 64). Reduza o nome.")
+                if len(d_name) > 64:
+                    errors.append(f"DAGSegmentName '{d_name}' tem {len(d_name)} caracteres! (Máximo permitido pelo Adobe é 64). Reduza o nome.")
                     
             # Exibição dos alertas
             if errors:
@@ -420,7 +433,7 @@ if uploaded_file is not None:
                 st.stop() # Bloqueia a aplicação aqui se tiver erro fatal
                 
             if warnings:
-                st.warning("⚠️ Avisos de Preenchimento (Verifique se é proposital):")
+                st.warning("⚠️️ Avisos de Preenchimento (Verifique se é proposital):")
                 for w in warnings:
                     st.write(f"- {w}")
                     
