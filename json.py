@@ -35,7 +35,6 @@ if 'data' in st.query_params:
 # FUNÇÕES DE PROCESSAMENTO (Coordenadora)
 # =====================================================================
 
-# NOVO: Função para extrair o cabeçalho (Metadata, Notas e Checklist) antes de limpar a tabela
 @st.cache_data
 def extract_metadata(file_bytes, file_name, sheet_name=None):
     try:
@@ -52,12 +51,12 @@ def extract_metadata(file_bytes, file_name, sheet_name=None):
         "user": "",
         "cid": "",
         "notes": [],
-        "include": [], # Agora são listas para guardar várias linhas
+        "include": [], 
         "exclude": []
     }
 
     notes_col_idx = None
-    current_mode = None # Rastreador para saber se estamos no Include ou Exclude
+    current_mode = None 
 
     for idx, row in df_raw.iterrows():
         # Para a leitura quando chegar na tabela da Waterfall
@@ -98,7 +97,7 @@ def extract_metadata(file_bytes, file_name, sheet_name=None):
             if vals: meta[current_mode].append(" | ".join(vals))
             
         elif col0 and col0 not in ["and", "criteria:"]:
-            # Se for outra coisa (ex: Send Volume), desliga o rastreador
+            # Se for outra coisa, desliga o rastreador
             current_mode = None
 
         # Mapeamento dos Alertas (Notes)
@@ -111,7 +110,6 @@ def extract_metadata(file_bytes, file_name, sheet_name=None):
     return meta
 
 
-# 1. DESEMPENHO COM CACHE: Memoriza a leitura do arquivo para deixar a navegação instantânea
 @st.cache_data
 def load_and_clean_data(file_bytes, file_name, sheet_name=None):
     if file_name.endswith('.csv'):
@@ -126,12 +124,17 @@ def load_and_clean_data(file_bytes, file_name, sheet_name=None):
     if 'unnamed' in first_col or 'deployment' in first_col:
         for idx, row in df.iterrows():
             row_values = [str(val).lower().strip() for val in row.values]
-            if any(k in row_values for k in ['dag segment name', 'segment name', 'cellname', 'waterfall order']):
+            
+            # ATUALIZADO: Match Parcial para ler o cabeçalho mesmo se vier com avisos e parênteses
+            has_header = any(any(k in v for k in ['dag segment name', 'segment name', 'cellname', 'waterfall order']) for v in row_values)
+            
+            if has_header:
                 df.columns = df.iloc[idx]
                 df = df.iloc[idx + 1:].reset_index(drop=True)
                 break
 
     return df
+
 
 def process_data(df):
     final_json_data = []
@@ -139,13 +142,23 @@ def process_data(df):
 
     cols = {str(c).strip().lower(): c for c in df.columns}
 
+    # ATUALIZADO: Adicionado Match Flexível (Substring) para ler colunas renomeadas
     def get_val(row, possible_names):
+        # 1. Tenta Match Exato primeiro
         for name in possible_names:
             actual_col = cols.get(name.lower())
             if actual_col is not None:
                 val = str(row.get(actual_col, '')).strip()
                 if val.lower() != 'nan' and val != '':
                     return val
+        
+        # 2. Tenta Match Parcial (ex: acha 'cellname' dentro de 'cellname (please use this...)')
+        for col_lower, actual_col in cols.items():
+            for name in possible_names:
+                if name.lower() in col_lower:
+                    val = str(row.get(actual_col, '')).strip()
+                    if val.lower() != 'nan' and val != '':
+                        return val
         return ''
 
     for _, row in df.iterrows():
@@ -239,9 +252,7 @@ def process_data(df):
             else:
                 sl_parts = [sline_code, sline_code]
 
-            # =================================================================
             # CORREÇÃO DE ORDEM (CONTROL vs TEST)
-            # =================================================================
             if len(parts) >= 2:
                 p0_lower = parts[0].lower()
                 p1_lower = parts[1].lower()
@@ -284,7 +295,7 @@ def process_data(df):
             waterfall_id += 2
 
             for r in records:
-                r["_Source"] = source  # Campo oculto para o Raio-X
+                r["_Source"] = source  
                 if source.upper() != "ACM":
                     r["DAGSCount"] = dag_count
                     r["isABTest"] = "FALSE"
@@ -306,7 +317,7 @@ def process_data(df):
             }
             waterfall_id += 1
             
-            record["_Source"] = source # Campo oculto para o Raio-X
+            record["_Source"] = source 
 
             if source.upper() != "ACM":
                 record["DAGSCount"] = dag_count
@@ -330,13 +341,12 @@ if uploaded_file is not None:
         file_bytes = uploaded_file.getvalue()
         file_name = uploaded_file.name
         
-        # 2. LEITURA DE MÚLTIPLAS ABAS (Multi-sheet Handling)
+        # LEITURA DE MÚLTIPLAS ABAS (Multi-sheet Handling)
         sheet_selection = None
         if file_name.endswith(('.xlsx', '.xls')):
             xls = pd.ExcelFile(io.BytesIO(file_bytes))
             sheet_names = xls.sheet_names
             if len(sheet_names) > 1:
-                # Se tiver mais de uma aba, exibe um menu para escolher
                 sheet_selection = st.selectbox("📂 Múltiplas abas detectadas. Selecione a aba da cachoeira:", sheet_names)
             else:
                 sheet_selection = sheet_names[0]
@@ -387,7 +397,7 @@ if uploaded_file is not None:
             errors = []
             warnings = []
             
-            # Checagem de CellName Duplicado (O que causa erro no Adobe)
+            # Checagem de CellName Duplicado
             cell_names = [obj.get("CellName", "") for obj in json_objects]
             counts = Counter(cell_names)
             duplicates = [name for name, count in counts.items() if count > 1 and name != ""]
